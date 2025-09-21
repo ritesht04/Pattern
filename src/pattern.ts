@@ -1,220 +1,129 @@
-export interface CellState {
-  number: number;
-  color: 'black' | 'blue' | 'red' | 'green';
-  isActive: boolean;
+/**
+ * Initializes a grid with a specified number of rows and columns.
+ * All cells are initially set to an "off" state (0).
+ * @param {number} rows - The number of rows in the grid.
+ * @param {number} cols - The number of columns in the grid.
+ * @returns {number[][]} A 2D array representing the initial grid state.
+ */
+export const initPattern = (rows: number, cols: number): number[][] => {
+  return Array.from({ length: rows }, () => Array(cols).fill(0));
+};
+
+/**
+ * Computes the next state of the grid based on a snake-like zigzag animation.
+ * The snake moves in a zigzag pattern across the grid, with different segments
+ * having different colors based on their age (distance from the head).
+ * @param {number[][]} grid - The current grid state.
+ * @param {number} tick - The current animation frame count.
+ * @returns {number[][]} A new 2D array representing the next grid state.
+ */
+export const stepPattern = (grid: number[][], tick: number): number[][] => {
+  const newGrid = initPattern(grid.length, grid[0]?.length || 0); // Start with a fresh grid
+  const rows = newGrid.length;
+  if (rows === 0) return [];
+  const cols = newGrid[0].length;
+
+  // Make the snake length relative to the grid size for a nice effect
+  const snakeLength = Math.max(5, Math.floor(Math.min(rows, cols) * 0.8));
+
+  // Loop backwards to draw each segment of the snake's body
+  for (let i = 0; i < snakeLength; i++) {
+    const segmentTick = tick - i;
+    if (segmentTick < 0) continue; // Don't draw segments from before time 0
+
+    // Calculate the total number of cells to determine when the pattern should loop
+    const totalCells = rows * cols;
+    const effectiveTick = segmentTick % totalCells;
+
+    // Determine the current row for this segment
+    const snakeRow = Math.floor(effectiveTick / cols);
+    
+    let snakeCol: number;
+    // Determine column based on whether the row is even or odd to create the zig-zag
+    if (snakeRow % 2 === 0) {
+      // On even rows (0, 2, ...), the snake moves from left to right
+      snakeCol = effectiveTick % cols;
+    } else {
+      // On odd rows (1, 3, ...), the snake moves from right to left
+      snakeCol = cols - 1 - (effectiveTick % cols);
+    }
+
+    // Light up the cell for this segment if it's within the grid bounds
+    if (snakeRow < rows && snakeCol >= 0 && snakeCol < cols) {
+      // Assign the segment's tick value to the cell for dynamic coloring
+      // Newer segments (closer to the head) will have a higher tick value
+      newGrid[snakeRow][snakeCol] = segmentTick;
+    }
+  }
+
+  return newGrid;
+};
+
+export interface PatternConfig {
+  rows: number;
+  cols: number;
+  speed: number;
+  isRunning: boolean;
+  tick: number;
 }
 
-export interface PatternStep {
-  step: number;
-  cells: CellState[];
-  description: string;
-}
+export class PatternManager {
+  private config: PatternConfig;
 
-export class PatternGenerator {
-  private totalCells = 200;
-  private totalSteps = 100;
-  private currentStep = 0;
-  private isPlaying = false;
-  private animationSpeed = 500; // milliseconds
-
-  // Define the zigzag patterns based on the images
-  private bluePatterns = [
-    // First diagonal pattern (down-right with deviations)
-    [12, 23, 34, 45, 55, 64, 73, 82, 93, 104, 115, 125, 134, 143, 152, 159, 168, 177, 185, 186],
-    // Second diagonal pattern (down-left with deviations)  
-    [19, 28, 37, 46, 56, 67, 78, 89, 98, 107, 116, 126, 137, 148, 159, 168, 177, 185],
-    // Additional blue cells
-    [13, 24, 35, 46, 57, 68, 79, 90, 101, 112, 123, 134, 145, 156, 167, 178, 189]
-  ];
-
-  private redPatterns = [
-    // First red diagonal pattern
-    [17, 28, 39, 50, 61, 72, 83, 94, 105, 116, 127, 138, 149, 160, 171, 182],
-    // Second red diagonal pattern
-    [16, 25, 34, 43, 52, 61, 72, 83, 94, 105, 116, 127, 138, 149, 160, 169, 178],
-    // Red blocks at bottom
-    [162, 163, 171, 172, 173, 181, 182, 183]
-  ];
-
-  private greenPatterns = [
-    // Header row (1-10)
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    // Bottom special cells
-    [191, 192]
-  ];
-
-  generateInitialGrid(): CellState[] {
-    const cells: CellState[] = [];
-    
-    for (let i = 1; i <= this.totalCells; i++) {
-      let color: 'black' | 'blue' | 'red' | 'green' = 'black';
-      
-      // Check if number is in any pattern
-      if (this.greenPatterns.some(pattern => pattern.includes(i))) {
-        color = 'green';
-      } else if (this.bluePatterns.some(pattern => pattern.includes(i))) {
-        color = 'blue';
-      } else if (this.redPatterns.some(pattern => pattern.includes(i))) {
-        color = 'red';
-      }
-
-      cells.push({
-        number: i,
-        color,
-        isActive: false
-      });
-    }
-
-    return cells;
+  constructor(rows: number = 20, cols: number = 10, speed: number = 100) {
+    this.config = {
+      rows,
+      cols,
+      speed,
+      isRunning: false,
+      tick: 0
+    };
   }
 
-  generatePatternSequence(): PatternStep[] {
-    const sequence: PatternStep[] = [];
-    const baseGrid = this.generateInitialGrid();
-
-    for (let step = 0; step < this.totalSteps; step++) {
-      const cells = [...baseGrid];
-      let description = `Step ${step + 1}`;
-
-      // Create animated patterns based on step
-      if (step < 30) {
-        // First phase: Show blue diagonal pattern
-        this.animateBluePattern(cells, step, 30);
-        description = `Blue Pattern Phase - Step ${step + 1}`;
-      } else if (step < 60) {
-        // Second phase: Show red diagonal pattern
-        this.animateRedPattern(cells, step - 30, 30);
-        description = `Red Pattern Phase - Step ${step + 1}`;
-      } else {
-        // Third phase: Combined zigzag pattern
-        this.animateCombinedPattern(cells, step - 60, 40);
-        description = `Combined Zigzag - Step ${step + 1}`;
-      }
-
-      sequence.push({
-        step: step + 1,
-        cells,
-        description
-      });
-    }
-
-    return sequence;
+  getConfig(): PatternConfig {
+    return { ...this.config };
   }
 
-  private animateBluePattern(cells: CellState[], progress: number, maxProgress: number) {
-    const pattern = this.bluePatterns[0];
-    const activeCount = Math.floor((pattern.length * progress) / maxProgress);
-    
-    // Reset all cells
-    cells.forEach(cell => cell.isActive = false);
-    
-    // Activate cells progressively
-    for (let i = 0; i < activeCount && i < pattern.length; i++) {
-      const cellIndex = cells.findIndex(cell => cell.number === pattern[i]);
-      if (cellIndex !== -1) {
-        cells[cellIndex].isActive = true;
-        cells[cellIndex].color = 'blue';
-      }
-    }
+  updateConfig(updates: Partial<PatternConfig>): void {
+    this.config = { ...this.config, ...updates };
   }
 
-  private animateRedPattern(cells: CellState[], progress: number, maxProgress: number) {
-    const pattern = this.redPatterns[0];
-    const activeCount = Math.floor((pattern.length * progress) / maxProgress);
-    
-    // Reset all cells
-    cells.forEach(cell => cell.isActive = false);
-    
-    // Activate cells progressively
-    for (let i = 0; i < activeCount && i < pattern.length; i++) {
-      const cellIndex = cells.findIndex(cell => cell.number === pattern[i]);
-      if (cellIndex !== -1) {
-        cells[cellIndex].isActive = true;
-        cells[cellIndex].color = 'red';
-      }
-    }
+  reset(): void {
+    this.config.tick = 0;
+    this.config.isRunning = false;
   }
 
-  private animateCombinedPattern(cells: CellState[], progress: number, maxProgress: number) {
-    const bluePattern = this.bluePatterns[1];
-    const redPattern = this.redPatterns[1];
-    
-    // Reset all cells
-    cells.forEach(cell => {
-      cell.isActive = false;
-      if (!this.greenPatterns.some(pattern => pattern.includes(cell.number))) {
-        cell.color = 'black';
-      }
-    });
-    
-    // Create zigzag effect by alternating between patterns
-    const totalSteps = Math.max(bluePattern.length, redPattern.length);
-    const currentPos = Math.floor((progress * totalSteps) / maxProgress);
-    
-    // Activate blue cells
-    for (let i = 0; i <= currentPos && i < bluePattern.length; i++) {
-      const cellIndex = cells.findIndex(cell => cell.number === bluePattern[i]);
-      if (cellIndex !== -1) {
-        cells[cellIndex].isActive = true;
-        cells[cellIndex].color = 'blue';
-      }
-    }
-    
-    // Activate red cells with offset for zigzag effect
-    const redOffset = Math.floor(currentPos / 2);
-    for (let i = 0; i <= redOffset && i < redPattern.length; i++) {
-      const cellIndex = cells.findIndex(cell => cell.number === redPattern[i]);
-      if (cellIndex !== -1) {
-        cells[cellIndex].isActive = true;
-        cells[cellIndex].color = 'red';
-      }
-    }
+  nextTick(): number {
+    this.config.tick++;
+    return this.config.tick;
   }
 
-  getCurrentStep(): number {
-    return this.currentStep;
+  getCurrentTick(): number {
+    return this.config.tick;
   }
 
-  getTotalSteps(): number {
-    return this.totalSteps;
+  setTick(tick: number): void {
+    this.config.tick = tick;
   }
 
-  setCurrentStep(step: number): void {
-    this.currentStep = Math.max(0, Math.min(step, this.totalSteps - 1));
+  toggleRunning(): void {
+    this.config.isRunning = !this.config.isRunning;
   }
 
-  nextStep(): void {
-    if (this.currentStep < this.totalSteps - 1) {
-      this.currentStep++;
-    }
+  setRunning(running: boolean): void {
+    this.config.isRunning = running;
   }
 
-  previousStep(): void {
-    if (this.currentStep > 0) {
-      this.currentStep--;
-    }
+  setSpeed(speed: number): void {
+    this.config.speed = speed;
   }
 
-  play(): void {
-    this.isPlaying = true;
-  }
-
-  pause(): void {
-    this.isPlaying = false;
-  }
-
-  isCurrentlyPlaying(): boolean {
-    return this.isPlaying;
-  }
-
-  setAnimationSpeed(speed: number): void {
-    this.animationSpeed = Math.max(100, Math.min(speed, 2000));
-  }
-
-  getAnimationSpeed(): number {
-    return this.animationSpeed;
+  setGridSize(rows: number, cols: number): void {
+    this.config.rows = rows;
+    this.config.cols = cols;
+    this.config.tick = 0; // Reset tick when grid size changes
   }
 }
 
 // Export a singleton instance
-export const patternGenerator = new PatternGenerator();
+export const patternManager = new PatternManager();
